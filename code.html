@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Gesture Detection - Fixed Text</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .video-container {
+            position: relative;
+            display: inline-block;
+            margin: 20px 0;
+        }
+        #video {
+            border: 3px solid #fff;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            transform: scaleX(-1); /* Only mirror the video */
+        }
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            /* Remove transform: scaleX(-1) from canvas */
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        button {
+            padding: 12px 24px;
+            margin: 0 10px;
+            border: none;
+            border-radius: 25px;
+            background: #ff6b6b;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #ff5252;
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #status {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Hand Gesture Detection</h1>
+        
+        <div class="video-container">
+            <video id="video" width="640" height="480" autoplay playsinline></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div class="controls">
+            <button id="start-btn">Start Detection</button>
+            <button id="stop-btn" disabled>Stop</button>
+        </div>
+        
+        <div id="status">Click "Start Detection" to begin</div>
+    </div>
+
+    <script>
+        // Get DOM elements
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const statusEl = document.getElementById('status');
+
+        // App state
+        let model = null;
+        let stream = null;
+        let isDetecting = false;
+        let animationId = null;
+
+        // Initialize the app
+        async function init() {
+            statusEl.textContent = 'Loading hand detection model...';
+            
+            try {
+                // Load the model
+                model = await handpose.load();
+                statusEl.textContent = 'Model loaded! Click "Start Detection"';
+                startBtn.disabled = false;
+                
+            } catch (error) {
+                statusEl.textContent = 'Error loading model: ' + error.message;
+                console.error(error);
+            }
+        }
+
+        // Start detection
+        startBtn.addEventListener('click', async () => {
+            if (!model) return;
+            
+            statusEl.textContent = 'Starting camera...';
+            
+            try {
+                // Get camera access
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        width: 640, 
+                        height: 480,
+                        facingMode: 'user'
+                    }
+                });
+                
+                video.srcObject = stream;
+                
+                // Wait for video to load
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        resolve();
+                    };
+                });
+                
+                await video.play();
+                
+                isDetecting = true;
+                statusEl.textContent = 'Detection active - show your hand!';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                // Start detection loop
+                detectHands();
+                
+            } catch (error) {
+                statusEl.textContent = 'Camera error: ' + error.message;
+                console.error(error);
+            }
+        });
+
+        // Stop detection
+        stopBtn.addEventListener('click', () => {
+            stopDetection();
+        });
+
+        // Main detection function
+        async function detectHands() {
+            if (!isDetecting) return;
+            
+            const ctx = canvas.getContext('2d');
+            
+            try {
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Detect hands
+                const predictions = await model.estimateHands(video);
+                
+                if (predictions.length > 0) {
+                    const landmarks = predictions[0].landmarks;
+                    
+                    // Draw hand landmarks (we need to mirror the drawing coordinates)
+                    drawHandLandmarks(ctx, landmarks);
+                    
+                    // Detect gesture
+                    const gesture = detectGesture(landmarks);
+                    
+                    // Display gesture - text will now be correct!
+                    ctx.fillStyle = '#FFA500';
+                    ctx.font = 'bold 28px Arial';
+                    ctx.fillText(gesture.name, 20, 50);
+                    
+                    statusEl.textContent = `Detected: ${gesture.name}`;
+                } else {
+                    statusEl.textContent = 'No hand detected';
+                }
+                
+            } catch (error) {
+                console.error('Detection error:', error);
+            }
+            
+            animationId = requestAnimationFrame(detectHands);
+        }
+
+        // Draw hand landmarks
+        function drawHandLandmarks(ctx, landmarks) {
+            // Mirror landmarks for drawing
+            const mirroredLandmarks = landmarks.map(landmark => {
+                return [canvas.width - landmark[0], landmark[1]];
+            });
+            
+            // Connections between landmarks
+            const connections = [
+                [0, 1], [1, 2], [2, 3], [3, 4],           // Thumb
+                [0, 5], [5, 6], [6, 7], [7, 8],           // Index finger
+                [0, 9], [9, 10], [10, 11], [11, 12],      // Middle finger
+                [0, 13], [13, 14], [14, 15], [15, 16],    // Ring finger
+                [0, 17], [17, 18], [18, 19], [19, 20],    // Pinky finger
+                [5, 9], [9, 13], [13, 17]                 // Palm
+            ];
+            
+            // Draw connections
+            ctx.strokeStyle = '#00FF00';
+            ctx.lineWidth = 3;
+            
+            connections.forEach(([startIdx, endIdx]) => {
+                const start = mirroredLandmarks[startIdx];
+                const end = mirroredLandmarks[endIdx];
+                
+                ctx.beginPath();
+                ctx.moveTo(start[0], start[1]);
+                ctx.lineTo(end[0], end[1]);
+                ctx.stroke();
+            });
+            
+            // Draw landmarks
+            ctx.fillStyle = '#FF0000';
+            mirroredLandmarks.forEach(landmark => {
+                ctx.beginPath();
+                ctx.arc(landmark[0], landmark[1], 5, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+        }
+
+        // Detect gesture
+        function detectGesture(landmarks) {
+            // Landmark indices for fingertips and relevant joints
+            const thumbTip = landmarks[4];
+            const indexTip = landmarks[8];
+            const middleTip = landmarks[12];
+            const ringTip = landmarks[16];
+            const pinkyTip = landmarks[20];
+            
+            const thumbIp = landmarks[3];
+            const indexPip = landmarks[6];
+            const middlePip = landmarks[10];
+            const ringPip = landmarks[14];
+            const pinkyPip = landmarks[18];
+            
+            // For mirrored video, thumb logic is reversed
+            const isThumbExtended = thumbTip[0] > thumbIp[0]; // Right hand logic mirrored
+            const isIndexExtended = indexTip[1] < indexPip[1];
+            const isMiddleExtended = middleTip[1] < middlePip[1];
+            const isRingExtended = ringTip[1] < ringPip[1];
+            const isPinkyExtended = pinkyTip[1] < pinkyPip[1];
+            
+            const extendedFingers = [isThumbExtended, isIndexExtended, isMiddleExtended, isRingExtended, isPinkyExtended];
+            const extendedCount = extendedFingers.filter(Boolean).length;
+            
+            if (extendedCount === 5) return { name: "OPEN HAND 🖐️", icon: "🖐️" };
+            if (extendedCount === 0) return { name: "FIST ✊", icon: "✊" };
+            if (isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) return { name: "POINTING 👆", icon: "👆" };
+            if (isIndexExtended && isMiddleExtended && !isRingExtended && !isPinkyExtended) return { name: "VICTORY ✌️", icon: "✌️" };
+            if (isThumbExtended && isPinkyExtended && !isIndexExtended && !isMiddleExtended && !isRingExtended) return { name: "ROCK ON 🤘", icon: "🤘" };
+            if (isThumbExtended && isIndexExtended && extendedCount === 2) return { name: "OK SIGN 👌", icon: "👌" };
+            if (isMiddleExtended && !isIndexExtended && !isRingExtended && !isPinkyExtended && !isThumbExtended) return { name: "FUCK YOU TOO 🖕", icon: "🖕"};
+            if (isMiddleExtended && !isIndexExtended && !isRingExtended && !isPinkyExtended && isThumbExtended) return { name: "FUCK YOU BITCH 🖕", icon: "🖕"};            
+            return { name: "UNKNOWN GESTURE", icon: "❓" };
+        }
+
+        // Stop detection
+        function stopDetection() {
+            isDetecting = false;
+            
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+            
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            statusEl.textContent = 'Detection stopped';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+
+        // Initialize when page loads
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
