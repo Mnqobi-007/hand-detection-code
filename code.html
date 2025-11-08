@@ -272,9 +272,7 @@
             if (isIndexExtended && !isMiddleExtended && !isRingExtended && !isPinkyExtended) return { name: "POINTING 👆", icon: "👆" };
             if (isIndexExtended && isMiddleExtended && !isRingExtended && !isPinkyExtended) return { name: "VICTORY ✌️", icon: "✌️" };
             if (isThumbExtended && isPinkyExtended && !isIndexExtended && !isMiddleExtended && !isRingExtended) return { name: "ROCK ON 🤘", icon: "🤘" };
-            if (isThumbExtended && isIndexExtended && extendedCount === 2) return { name: "OK SIGN 👌", icon: "👌" };
-            if (isMiddleExtended && !isIndexExtended && !isRingExtended && !isPinkyExtended && !isThumbExtended) return { name: "FUCK YOU TOO 🖕", icon: "🖕"};
-            if (isMiddleExtended && !isIndexExtended && !isRingExtended && !isPinkyExtended && isThumbExtended) return { name: "FUCK YOU BITCH 🖕", icon: "🖕"};            
+            if (isThumbExtended && isIndexExtended && extendedCount === 2) return { name: "OK SIGN 👌", icon: "👌" };            
             return { name: "UNKNOWN GESTURE", icon: "❓" };
         }
 
@@ -303,4 +301,5 @@
         window.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
+
 </html>
